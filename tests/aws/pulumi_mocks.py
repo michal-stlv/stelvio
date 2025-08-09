@@ -27,7 +27,7 @@ class PulumiTestMocks(Mocks):
         super().__init__()
         self.created_resources: list[MockResourceArgs] = []
 
-    def new_resource(self, args: MockResourceArgs) -> tuple[str, dict[str, Any]]:  # noqa: PLR0912 C901
+    def new_resource(self, args: MockResourceArgs) -> tuple[str, dict[str, Any]]:  # noqa: PLR0912 C901 PLR0915
         self.created_resources.append(args)
         resource_id = tid(args.name)
         name = tn(args.name)
@@ -68,6 +68,21 @@ class PulumiTestMocks(Mocks):
                 output_props["cloudwatchRoleArn"] = args.inputs["cloudwatchRoleArn"]
         elif args.typ == "aws:dynamodb/table:Table":
             output_props["arn"] = f"arn:aws:dynamodb:{region}:{account_id}:table/{name}"
+        # S3 Bucket resource
+        elif args.typ == "aws:s3/bucket:Bucket":
+            output_props["arn"] = f"arn:aws:s3:::{name}"
+            output_props["bucket"] = name
+            output_props["bucket_regional_domain_name"] = f"{name}.s3.{region}.amazonaws.com"
+        # S3 Bucket Object resource
+        elif args.typ == "aws:s3/bucketObject:BucketObject":
+            output_props["arn"] = (
+                f"arn:aws:s3:::{args.inputs.get('bucket', 'unknown-bucket')}"
+                f"/{args.inputs.get('key', 'unknown-key')}"
+            )
+            output_props["etag"] = f"etag-{resource_id}"
+        # S3 Bucket Public Access Block
+        elif args.typ == "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock":
+            output_props["bucket"] = args.inputs.get("bucket", name)
         # LayerVersion resource
         elif args.typ == "aws:lambda/layerVersion:LayerVersion":
             # LayerVersion ARN includes the name and version number (mocked as 1)
@@ -101,6 +116,18 @@ class PulumiTestMocks(Mocks):
         # Route53 Record resource
         elif args.typ == "aws:route53/record:Record":
             output_props["fqdn"] = args.inputs.get("name", "example.com")
+        # CloudFront resources
+        elif args.typ == "aws:cloudfront/distribution:Distribution":
+            output_props["arn"] = f"arn:aws:cloudfront::{account_id}:distribution/{resource_id}"
+            output_props["domain_name"] = f"{resource_id}.cloudfront.net"
+            output_props["hosted_zone_id"] = "Z2FDTNDATAQYW2"  # CloudFront's hosted zone ID
+        elif args.typ == "aws:cloudfront/originAccessControl:OriginAccessControl":
+            output_props["etag"] = f"ETAG{resource_id}"
+        elif args.typ == "aws:cloudfront/function:Function":
+            output_props["arn"] = f"arn:aws:cloudfront::{account_id}:function/{name}"
+            output_props["etag"] = f"ETAG{resource_id}"
+        elif args.typ == "aws:s3/bucketPolicy:BucketPolicy":
+            output_props["policy"] = args.inputs.get("policy", "{}")
         # CloudFlare Record resource (for DNS mocking)
         elif args.typ == "cloudflare:index/record:Record":
             output_props["hostname"] = args.inputs.get("name", "example.com")
@@ -168,6 +195,16 @@ class PulumiTestMocks(Mocks):
     def created_dynamo_tables(self, name: str | None = None) -> list[MockResourceArgs]:
         return self._filter_created("aws:dynamodb/table:Table", name)
 
+    # S3 resource helpers
+    def created_s3_buckets(self, name: str | None = None) -> list[MockResourceArgs]:
+        return self._filter_created("aws:s3/bucket:Bucket", name)
+
+    def created_s3_bucket_objects(self, name: str | None = None) -> list[MockResourceArgs]:
+        return self._filter_created("aws:s3/bucketObject:BucketObject", name)
+
+    def created_s3_public_access_blocks(self, name: str | None = None) -> list[MockResourceArgs]:
+        return self._filter_created("aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock", name)
+
     # Layer resource helper
     def created_layer_versions(self, name: str | None = None) -> list[MockResourceArgs]:
         return self._filter_created("aws:lambda/layerVersion:LayerVersion", name)
@@ -190,3 +227,16 @@ class PulumiTestMocks(Mocks):
         route53_records = self._filter_created("aws:route53/record:Record", name)
         cloudflare_records = self._filter_created("cloudflare:index/record:Record", name)
         return route53_records + cloudflare_records
+
+    # CloudFront resource helpers
+    def created_cloudfront_distributions(self, name: str | None = None) -> list[MockResourceArgs]:
+        return self._filter_created("aws:cloudfront/distribution:Distribution", name)
+
+    def created_origin_access_controls(self, name: str | None = None) -> list[MockResourceArgs]:
+        return self._filter_created("aws:cloudfront/originAccessControl:OriginAccessControl", name)
+
+    def created_cloudfront_functions(self, name: str | None = None) -> list[MockResourceArgs]:
+        return self._filter_created("aws:cloudfront/function:Function", name)
+
+    def created_bucket_policies(self, name: str | None = None) -> list[MockResourceArgs]:
+        return self._filter_created("aws:s3/bucketPolicy:BucketPolicy", name)
